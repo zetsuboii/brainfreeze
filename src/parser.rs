@@ -3,20 +3,20 @@
 //! It combines tokens into expressions and defines valid expressions
 //! There are infinite number of valid strings (expressions) and finite
 //! number of rules.
-//! 
+//!
 //! You can create strings using these rules. These rules are called
 //! **production** and strings created using these productions is called
 //! **derivations**.
-//! 
+//!
 //! Each production in CFG has a *head* and a *body*
-//! 
+//!
 //! - **Head** is the rule's name
-//! 
+//!
 //! - **Body** is what rule generates, which is a list of two type of symbols:
 //!     - Terminal: Lexemes that don't lead to further lexems
 //!     - Nonterminal: Lexemes that reference other rules. One rule name can
 //!       refer to multiple bodies, in which case we can follow whichever one we want
-//! 
+//!
 //! These rules are specified using Backus-Naur form (BNF).
 //! - `->`      Start of the rule
 //! - `*`       Zero or more times
@@ -24,7 +24,7 @@
 //! - `|`       Union
 //! - `?`       Optional
 //! - `;`       End of rule
-//! 
+//!
 //! BNF of Brainf*ck would be:
 //! ```plaintext
 //! program -> command*;
@@ -32,17 +32,19 @@
 //! operator -> "+" | "-" | "<" | ">" | "," | ".";
 //! loop -> "[" program "]";
 //! ```
-//! 
+//!
 //! This is a recursive structure so it will be represented with
 //! [Abstract Syntax Tree (AST)](https://en.wikipedia.org/wiki/Abstract_syntax_tree)
 //! structure.
 
-use crate::lexer::{TokenKind, Token};
+use crate::lexer::{Position, Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Program {
     pub commands: Vec<Box<dyn Command>>,
 }
+
+pub type ParseError = (Position, String);
 
 pub trait Command: std::fmt::Debug {}
 
@@ -55,7 +57,9 @@ pub enum Operator {
     PutChar,
     ReadChar,
 }
-impl Command for Operator {}
+impl Command for Operator {
+    
+}
 
 #[derive(Debug)]
 pub struct Iteration {
@@ -67,11 +71,16 @@ impl Command for Iteration {}
 pub struct Parser {
     current: usize,
     tokens: Vec<Token>,
+    errors: Vec<ParseError>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { current: 0, tokens }
+        Self {
+            current: 0,
+            tokens,
+            errors: Vec::new(),
+        }
     }
 
     fn peek(&self) -> &Token {
@@ -93,6 +102,10 @@ impl Parser {
         self.previous()
     }
 
+    fn push_error(&mut self, message: String) {
+        self.errors.push((self.peek().position().clone(), message));
+    }
+
     fn program(&mut self) -> Program {
         let mut commands: Vec<Box<dyn Command>> = Vec::new();
 
@@ -101,10 +114,12 @@ impl Parser {
                 commands.push(operator);
                 continue;
             }
+
             if let Some(iteration) = self.iteration() {
                 commands.push(iteration);
                 continue;
             }
+
             break;
         }
 
@@ -140,7 +155,7 @@ impl Parser {
         let program = self.program();
 
         if !matches!(self.peek().kind(), TokenKind::LoopEnd) {
-            eprintln!("Expected ']' at {}", self.peek().position());
+            self.push_error("Expected ']'".to_string());
             return None;
         }
         self.advance();
@@ -148,12 +163,17 @@ impl Parser {
         Some(Box::new(Iteration { program }))
     }
 
-    pub fn parse(&mut self) -> Program {
+    pub fn parse(mut self) -> Result<Program, Vec<ParseError>> {
         let program = self.program();
         while !self.at_end() {
-            eprintln!("Unexpected token {} at {}", self.peek().kind(), self.peek().position());
+            self.push_error(format!("Unexpected token {}", self.peek().kind()));
             self.advance();
         }
-        program
+
+        if self.errors.len() == 0 {
+            Ok(program)
+        } else {
+            Err(self.errors)
+        }
     }
 }

@@ -65,10 +65,17 @@ fn run(code: String) -> Result<(), ScanError> {
         Err(errors) => return Err(errors),
     };
 
-    let mut parser = Parser::new(tokens);
+    let parser = Parser::new(tokens);
     let ast = parser.parse();
 
-    dbg!(ast);
+    match ast {
+        Ok(ast) => println!("{:#?}", &ast),
+        Err(errors) => {
+            for (pos, msg) in errors {
+                println!("Error at position {pos}: {msg}");
+            }
+        }
+    }
 
     Ok(())
 }
