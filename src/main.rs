@@ -58,8 +58,8 @@ fn run_prompt() {
 }
 
 /// Inner function to run the code
-fn run(code: String) -> Result<(), ScanError> {
-    let scanner = Scanner::new(code);
+fn run(code: String) -> Result<(), Vec<LexError>> {
+    let scanner = Lexer::new(code);
     let tokens = match scanner.scan_tokens() {
         Ok(tokens) => tokens,
         Err(errors) => return Err(errors),

@@ -57,9 +57,7 @@ pub enum Operator {
     PutChar,
     ReadChar,
 }
-impl Command for Operator {
-    
-}
+impl Command for Operator {}
 
 #[derive(Debug)]
 pub struct Iteration {

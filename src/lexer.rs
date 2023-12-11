@@ -50,7 +50,7 @@ impl Display for Position {
     }
 }
 
-pub type ScanError = Vec<(Position, String)>;
+pub type LexError = (Position, String);
 
 #[derive(Debug)]
 pub struct Token {
@@ -105,23 +105,22 @@ impl Display for TokenKind {
     }
 }
 
-// 1. Scanning
-pub struct Scanner {
+pub struct Lexer {
     inner: String,
 }
 
-impl Scanner {
+impl Lexer {
     pub fn new(inner: String) -> Self {
         Self { inner }
     }
 
-    pub fn scan_tokens(self) -> Result<Vec<Token>, ScanError> {
+    pub fn scan_tokens(self) -> Result<Vec<Token>, Vec<LexError>> {
         use TokenKind::*;
 
         let chars = self.inner.chars();
         let mut stacked: Option<(char, usize)> = None;
         let mut tokens: Vec<Token> = Vec::new();
-        let mut errors: ScanError = Vec::new();
+        let mut errors: Vec<LexError> = Vec::new();
 
         let mut position = Position::new(0, 0);
 
