@@ -37,16 +37,26 @@
 //! [Abstract Syntax Tree (AST)](https://en.wikipedia.org/wiki/Abstract_syntax_tree)
 //! structure.
 
-use crate::lexer::{Position, Token, TokenKind};
+use crate::{
+    interpreter::{Interpret, State},
+    lexer::{Position, Token, TokenKind},
+};
 
 #[derive(Debug)]
 pub struct Program {
     pub commands: Vec<Box<dyn Command>>,
 }
+impl Interpret for Program {
+    fn interpret(&mut self, state: &mut State) {
+        for command in self.commands.iter_mut() {
+            command.interpret(state);
+        }
+    }
+}
 
 pub type ParseError = (Position, String);
 
-pub trait Command: std::fmt::Debug {}
+pub trait Command: std::fmt::Debug + Interpret {}
 
 #[derive(Debug)]
 pub enum Operator {
@@ -57,11 +67,37 @@ pub enum Operator {
     PutChar,
     ReadChar,
 }
+impl Interpret for Operator {
+    fn interpret(&mut self, state: &mut State) {
+        match self {
+            Operator::Increment(v) => state.memory[state.pointer] += *v as u8,
+            Operator::Decrement(v) => state.memory[state.pointer] -= *v as u8,
+            Operator::Right(v) => state.pointer += *v,
+            Operator::Left(v) => state.pointer -= *v,
+            Operator::PutChar => {
+                let c = state.memory[state.pointer] as char;
+                state.output.push(c as u8);
+            }
+            Operator::ReadChar => {
+                let c = state.input.pop().unwrap_or(0);
+                state.memory[state.pointer] = c;
+            }
+        }
+    }
+}
+
 impl Command for Operator {}
 
 #[derive(Debug)]
 pub struct Iteration {
     pub program: Program,
+}
+impl Interpret for Iteration {
+    fn interpret(&mut self, state: &mut State) {
+        while state.memory[state.pointer] != 0 {
+            self.program.interpret(state);
+        }
+    }
 }
 impl Command for Iteration {}
 

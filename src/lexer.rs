@@ -15,18 +15,18 @@
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Copy)]
-pub struct Position(u16, u16);
+pub struct Position(u32, u32);
 
 impl Position {
-    pub fn new(line_number: u16, offset: u16) -> Self {
+    pub fn new(line_number: u32, offset: u32) -> Self {
         Self(line_number, offset)
     }
 
-    pub fn line_number(&self) -> u16 {
+    pub fn line_number(&self) -> u32 {
         self.0
     }
 
-    pub fn offset(&self) -> u16 {
+    pub fn offset(&self) -> u32 {
         self.1
     }
 
