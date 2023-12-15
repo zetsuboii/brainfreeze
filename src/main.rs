@@ -1,74 +1,135 @@
-#![allow(dead_code)]
 mod img;
 mod interpreter;
 mod lexer;
 mod parser;
 
+use clap::{Parser, Subcommand};
 use std::io::{BufRead, Write};
 
-use img::*;
-use interpreter::*;
-use lexer::*;
-use parser::*;
-
-fn main() {
-    let image_path = std::env::args().nth(1).expect("no file given");
-
-    if let Some(program_path) = std::env::args().nth(2) {
-        let contents = std::fs::read_to_string(program_path).expect("read file");
-        let lexer = Lexer::new(contents);
-        let tokens = lexer.scan_tokens().unwrap();
-
-        encode_image(&image_path, tokens).unwrap();
-    } else {
-        let tokens = parse_image(image_path.as_ref()).unwrap();
-        if tokens.len() == 0 {
-            println!("No program found");
-            std::process::exit(1);
-        }
-        let parser = Parser::new(tokens);
-        let mut ast: Program = parser.parse().unwrap();
-        let mut interpreter = Interpreter::new(vec![]);
-        interpreter.interpret(&mut ast);
-
-        let output = String::from_utf8(interpreter.state.output.clone()).unwrap();
-
-        println!("Memory         :\t {:?}", interpreter.state.memory);
-        println!("Pointer        :\t {:?}", interpreter.state.pointer);
-        println!("Input          :\t {:?}", interpreter.state.input);
-        println!("Output         :\t {:?}", interpreter.state.output);
-        println!("Output (UTF-8) :\t {:?}", output);
-    }
-
-    // let tokens = parse_image(image_path.as_ref()).unwrap();
-    // println!("{:?}", tokens);
-
-    // println!(">> Brainfreeze <<");
-    // // Skip the program name and collect arguments
-    // let args: Vec<String> = std::env::args().skip(1).collect();
-    // if args.len() > 1 {
-    //     println!("Usage: brainfreeze <script>");
-    //     std::process::exit(64);
-    // } else if args.len() == 1 {
-    //     run_file(args[0].as_ref());
-    // } else {
-    //     run_prompt();
-    // }
+#[derive(Parser, Debug)]
+#[command(
+    author = "zetsuboii",
+    version = "1.0.0",
+    about = "Embed Brainf*ck programs in PNG images"
+)]
+struct Args {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-/// Read a file and run the code inside it
-fn run_file(path: &str) {
-    let contents = std::fs::read_to_string(path).expect("[error] read file");
-    if let Err(errors) = run(contents) {
-        for (pos, msg) in errors {
-            eprintln!("Error at line {pos}, {msg}");
-            std::process::exit(65);
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[command(about = "Inject a Brainf*ck program into a PNG image")]
+    Inject {
+        #[arg(help = "PNG image to inject into")]
+        image: String,
+
+        #[arg(help = "Brainf*ck program")]
+        program: String,
+
+        #[arg(short, long, help = "Output file", default_value = "out.png")]
+        output: String,
+    },
+    #[command(about="Execute a Brainf*ck program from a PNG image", aliases=["exec"])]
+    Execute {
+        #[arg(help = "PNG image to execute")]
+        image: String,
+
+        #[arg(short, long, help = "Verbose output", default_value = "false")]
+        verbose: bool,
+    },
+    #[command(about = "Run a REPL (Read, Evaluate, Print, Loop) environment")]
+    Repl {
+        #[arg(short, long, help = "Verbose output", default_value = "false")]
+        verbose: bool,
+    },
+}
+
+fn main() {
+    use interpreter::Interpreter;
+    use lexer::Lexer;
+    use parser::Parser;
+
+    let args = Args::parse();
+
+    match args.command {
+        Commands::Inject {
+            image,
+            program,
+            output,
+        } => {
+            let file_contents = match std::fs::read_to_string(program) {
+                Ok(contents) => contents,
+                Err(e) => {
+                    eprintln!("Error while reading file: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            let lexer = Lexer::new(file_contents);
+            let tokens = match lexer.scan_tokens() {
+                Ok(tokens) => tokens,
+                Err(errors) => {
+                    for (pos, msg) in errors {
+                        eprintln!("Syntax error at position {pos}: {msg}");
+                    }
+                    std::process::exit(1);
+                }
+            };
+
+            match img::write(&image, &output, tokens) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error while writing image: {}", e);
+                    std::process::exit(1);
+                }
+            }
+
+            println!("Wrote image to {}", output);
+        }
+        Commands::Execute { image, verbose } => {
+            let tokens = match img::read(&image) {
+                Ok(tokens) => tokens,
+                Err(e) => {
+                    eprintln!("Error while reading image: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if tokens.len() == 0 {
+                println!("No program found");
+                std::process::exit(1);
+            }
+
+            let parser = Parser::new(tokens);
+            let mut ast: parser::Program = match parser.parse() {
+                Ok(ast) => ast,
+                Err(errors) => {
+                    for (pos, msg) in errors {
+                        eprintln!("Error at position {pos}: {msg}");
+                    }
+                    std::process::exit(1);
+                }
+            };
+
+            let mut interpreter = Interpreter::new(vec![]);
+            interpreter.interpret(&mut ast);
+            interpreter.print_state(verbose);
+        }
+        Commands::Repl { verbose } => {
+            run_repl(verbose);
         }
     }
 }
 
 /// Run a REPL (Read, Evaluate, Print, Loop) environment
-fn run_prompt() {
+fn run_repl(verbose: bool) {
+    use lexer::Lexer;
+    use parser::Parser;
+    use interpreter::Interpreter;
+
+    println!(":: Brainfreeze REPL ::");
+
     let mut reader = std::io::BufReader::new(std::io::stdin());
     loop {
         let mut line = String::new();
@@ -84,47 +145,32 @@ fn run_prompt() {
             continue;
         }
 
-        if let Err(errors) = run(line) {
-            for (pos, msg) in errors {
-                println!("Error at position {pos}: {msg}");
+        let lexer = Lexer::new(line);
+        let tokens = match lexer.scan_tokens() {
+            Ok(tokens) => tokens,
+            Err(errors) => {
+                for (pos, msg) in errors {
+                    println!("Error at position {pos}: {msg}");
+                }
+                continue;
+            },
+        };
+
+        let parser = Parser::new(tokens);
+        let ast = parser.parse();
+
+        let mut ast = match ast {
+            Ok(ast) => ast,
+            Err(errors) => {
+                for (pos, msg) in errors {
+                    println!("Error at position {pos}: {msg}");
+                }
+                continue;
             }
-        }
+        };
+
+        let mut interpreter = Interpreter::new(vec![]);
+        interpreter.interpret(&mut ast);
+        interpreter.print_state(verbose);
     }
 }
-
-/// Inner function to run the code
-fn run(code: String) -> Result<(), Vec<LexError>> {
-    let scanner = Lexer::new(code);
-    let tokens = match scanner.scan_tokens() {
-        Ok(tokens) => tokens,
-        Err(errors) => return Err(errors),
-    };
-
-    let parser = Parser::new(tokens);
-    let ast = parser.parse();
-
-    let mut ast = match ast {
-        Ok(ast) => ast,
-        Err(errors) => {
-            for (pos, msg) in errors {
-                println!("Error at position {pos}: {msg}");
-            }
-            return Ok(());
-        }
-    };
-
-    let mut interpreter = Interpreter::new(vec![]);
-    interpreter.interpret(&mut ast);
-
-    let output = String::from_utf8(interpreter.state.output.clone()).unwrap();
-
-    println!("Memory         :\t {:?}", interpreter.state.memory);
-    println!("Pointer        :\t {:?}", interpreter.state.pointer);
-    println!("Input          :\t {:?}", interpreter.state.input);
-    println!("Output         :\t {:?}", interpreter.state.output);
-    println!("Output (UTF-8) :\t {:?}", output);
-
-    Ok(())
-}
-
-// 2. Parsing

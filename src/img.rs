@@ -1,19 +1,51 @@
-use std::path::Path;
+use std::fmt::Display;
 
 use image::{io::Reader as ImageReader, ImageBuffer, Rgba, RgbaImage};
 
 use crate::lexer::{Position, Token, TokenKind};
 
 #[derive(Debug)]
-pub enum ParseError {
+pub enum ReadError {
+    InvalidFileExtension,
     FileNotFound,
     DecodeFailed,
 }
 
+impl Display for ReadError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadError::InvalidFileExtension => {
+                formatter.write_str("invalid file extension, must be .png")
+            }
+            ReadError::FileNotFound => formatter.write_str("file not found"),
+            ReadError::DecodeFailed => {
+                formatter.write_str("failed to decode image, are you sure it's a png?")
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
-pub enum EncoderError {
+pub enum WriteError {
+    InvalidFileExtension,
     FileNotFound,
     DecodeFailed,
+    SaveFailed,
+}
+
+impl Display for WriteError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WriteError::InvalidFileExtension => {
+                formatter.write_str("invalid file extension, must be .png")
+            }
+            WriteError::FileNotFound => formatter.write_str("file not found"),
+            WriteError::DecodeFailed => {
+                formatter.write_str("failed to decode image, are you sure it's a png?")
+            }
+            WriteError::SaveFailed => formatter.write_str("failed to save image"),
+        }
+    }
 }
 
 const MINIMUM_PIXEL_DISTANCE: u8 = 10;
@@ -88,13 +120,16 @@ fn increase_kind(kind: &mut TokenKind, count: u32) {
     }
 }
 
-pub fn parse_image(path: &str) -> Result<Vec<Token>, EncoderError> {
+pub fn read(path: &str) -> Result<Vec<Token>, ReadError> {
+    if !path.ends_with(".png") {
+        return Err(ReadError::InvalidFileExtension);
+    }
     let mut tokens = Vec::new();
 
     let img = ImageReader::open(path)
-        .map_err(|_| EncoderError::FileNotFound)?
+        .map_err(|_| ReadError::FileNotFound)?
         .decode()
-        .map_err(|_| EncoderError::DecodeFailed)?
+        .map_err(|_| ReadError::DecodeFailed)?
         .to_rgba8();
     let (width, height) = img.dimensions();
     let img: RgbaImage = ImageBuffer::from_vec(width, height, img.into_raw()).unwrap();
@@ -203,13 +238,16 @@ fn encoded_pixel(distance: u8, values: &[u8; 4]) -> [u8; 4] {
     [r, g, b, a]
 }
 
-pub fn encode_image(path: &str, tokens: Vec<Token>) -> Result<(), EncoderError> {
+pub fn write(input_path: &str, output_path: &str, tokens: Vec<Token>) -> Result<(), WriteError> {
+    if !input_path.ends_with(".png") || !output_path.ends_with(".png") {
+        return Err(WriteError::InvalidFileExtension);
+    }
     let mut tokens = tokens.into_iter();
 
-    let img = ImageReader::open(path)
-        .map_err(|_| EncoderError::FileNotFound)?
+    let img = ImageReader::open(input_path)
+        .map_err(|_| WriteError::FileNotFound)?
         .decode()
-        .map_err(|_| EncoderError::DecodeFailed)?
+        .map_err(|_| WriteError::DecodeFailed)?
         .to_rgba8();
 
     let (width, height) = img.dimensions();
@@ -271,34 +309,10 @@ pub fn encode_image(path: &str, tokens: Vec<Token>) -> Result<(), EncoderError> 
         i += 1;
     }
 
-    let buffer = ImageBuffer::from_fn(width, height, |x, y| {
-        let pixel = pixels[(y * width + x) as usize];
-        image::Rgba(pixel.0)
-    });
-
-    let image_path = Path::new(path);
-    let new_path = format!(
-        "encoded-{}",
-        image_path.file_name().unwrap().to_str().unwrap()
-    );
-    let new_path = std::path::Path::new(new_path.as_str());
-    buffer.save(new_path).unwrap();
+    let buffer = ImageBuffer::from_fn(width, height, |x, y| pixels[(y * width + x) as usize]);
+    buffer
+        .save(output_path)
+        .map_err(|_| WriteError::SaveFailed)?;
 
     Ok(())
-}
-
-pub fn read_n_pixels(path: &str, n: usize) {
-    let img = ImageReader::open(path)
-        .map_err(|_| EncoderError::FileNotFound)
-        .unwrap()
-        .decode()
-        .map_err(|_| EncoderError::DecodeFailed)
-        .unwrap()
-        .to_rgba8();
-
-    let pixels: Vec<Rgba<u8>> = img.pixels().map(|pixel| pixel.clone()).collect();
-
-    for i in 0..n {
-        println!("{:?}", pixels[i]);
-    }
 }
