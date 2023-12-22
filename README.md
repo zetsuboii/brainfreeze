@@ -1,10 +1,15 @@
 # Brainfreeze
 
-A program to hide [Brainf*ck](https://esolangs.org/wiki/Brainfuck) program inside images
+A program to hide [Brainf*ck](https://esolangs.org/wiki/Brainfuck) programs inside images
 
 ![Example Image](.github/example.png)
 > This photo has the program that prints out "zetsuboii"
 > hidden inside
+
+## Installation
+1. Clone the repo and navigate inside
+2. Run `cargo build --release` to build the project
+3. Run `target/release/brainfreeze help` to see available commands
 
 ## Usage
 
